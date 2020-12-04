@@ -1,0 +1,89 @@
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <map>
+#include <algorithm>
+#include <memory>
+
+#include <boost/spirit/include/qi.hpp>
+#include <boost/fusion/adapted/std_pair.hpp>
+
+namespace qi = boost::spirit::qi;
+
+
+typedef std::pair< std::string, std::string > key_value_t;
+
+template< typename Iterator >
+struct key_value_grammar_t : qi::grammar< Iterator, key_value_t() >
+{
+	key_value_grammar_t()
+		: key_value_grammar_t::base_type( start )
+	{
+		using qi::char_;
+		using qi::int_;
+
+		start %= key >> ':' >> value;
+		key = char_( 'a', 'z' ) >> char_( 'a', 'z' ) >> char_( 'a', 'z' );
+		value = +( char_( 'a', 'z' ) | char_( '0', '9' ) | '#' );
+	}
+
+	qi::rule< Iterator, key_value_t() > start;
+	qi::rule< Iterator, std::string() > key, value;
+};
+
+
+typedef std::map< std::string, std::string > data_t;
+
+namespace std
+{
+	std::istream & operator>>( std::istream & is, data_t & data )
+	{
+		static key_value_grammar_t< std::string::const_iterator > key_value_grammar;
+
+		data.clear();
+		std::string s;
+		for( std::getline( is, s ); !s.empty(); std::getline( is, s ) )
+		{
+			std::string::const_iterator b{ s.begin() }, e{ s.end() };
+			while( b != e )
+			{
+				key_value_t kv;
+				if( qi::phrase_parse( b, e, key_value_grammar, qi::space, kv ) )
+					data.insert( kv );
+				else
+					throw std::runtime_error( "bad input for key_value_t" );
+
+				if( ( b != e ) && ( *b == ' ' ) )
+					++b;
+			}
+			if( is.eof() )
+				break;
+		}
+
+		return is;
+	}
+}
+
+
+int main( int argc, char * argv[] )
+{
+	if( argc < 2 )
+		return 0;
+
+	std::ifstream ifs( argv[ 1 ] );
+
+	size_t const count(
+		std::count_if(
+			std::istream_iterator< data_t >( ifs ), std::istream_iterator< data_t >(),
+			[]( data_t const & data ) -> bool
+			{
+				return ( ( data.size() == 8 )
+					|| ( ( data.size() == 7 ) && ( data.find( "cid" ) == data.end() ) ) );
+			}
+		)
+	);
+
+	std::cout << "count = " << count << std::endl;
+
+	return 0;
+}
